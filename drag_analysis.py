@@ -1,5 +1,4 @@
 # %%
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -7,16 +6,98 @@ import csv
 import time
 import os
 import sys
-
 from scipy.optimize import curve_fit
 from pathlib import Path
 from PIL import Image
 from scipy.optimize import curve_fit
-
+from shutil import copyfile
+import datetime
 # %%
+def calibrate_data(path_in):
+    csv_list = [x for x in os.listdir(path_in) if x not in ['_result.txt']]
+
+    result_path = os.path.join(path_in,'_result.txt')
+    if os.path.isfile(result_path):
+        df = pd.read_csv(result_path,comment='#',header=None)    
+        result = df.to_numpy().flatten()
+
+    def read_calibration_data(path):
+        df = pd.read_csv(path,nrows=1,comment='#',header=None)
+        if isinstance(df.iloc[0,0], str):   
+            df = pd.read_csv(os.path.join(path_in,file_name),skiprows=4,names=['time','data'],comment='#')
+            df = df.data.to_numpy()
+        else:
+            df = pd.read_csv(os.path.join(path_in,file_name),names=['data']).to_numpy()
+        return df
+
+    def linear_function(x,a,b):
+        return a*x + b
+
+    N = len(csv_list)
+    weight_array = np.array([])
+    data_array = np.array([])
+
+    plt.figure()
+    for file_name in csv_list:    
+        weight, rhs = file_name.split(".csv", 1)
+        weight = float(weight)    
+        data = np.mean(read_calibration_data(os.path.join(path_in, file_name)))
+        plt.scatter(weight,data)
+        weight_array = np.append(weight_array,weight)
+        data_array = np.append(data_array,data)
+
+    plt.plot(weight_array,data_array,'o')
+    popt,pcov = curve_fit(linear_function,weight_array,data_array)
+    xx = np.linspace(0,50,100)
+    plt.plot(xx,linear_function(xx,*popt))
+    plt.title('y = %.4f x + %.4f' %(popt[0],popt[1]))
+    perr = np.sqrt(np.diag(pcov))
+
+    print(perr)
+    print('a = %.6f +- %.6f' %(popt[0],perr[0]))
+
+    result = np.array([popt[0],perr[0]])
+    np.savetxt(os.path.join(path_in, '_result.txt'),result,delimiter=',')
+
+def make_folder(path_in):
+    if os.path.isdir(path_in):
+        while True:
+            y_or_n = input('Directory already exists. Do you want to overwrite? (y/n)')
+            if y_or_n == 'y':
+                break
+            elif y_or_n == 'n':
+                sys.exit(1)
+            else:
+                print('Please enter y or n')
+    else:
+        os.mkdir(path_in)
+        print('Successfully created the directory: %s' %path_in)
+
+
+def duplicate_folder(path_in):
+    path_handle = Path(path_in)
+    
+    name_in = path_handle.name
+    existing_folders = [x for x in os.listdir(path_handle.parent) if name_in in x]
+    
+    no = 1
+    while True:
+        try:
+            no = no + 1
+            new_folder_path = path_in + ' (%d)'%(no)
+            os.mkdir(new_folder_path)
+            src = os.path.join(path_in,'_zero.csv')
+            break
+        except:
+            pass   
+    
+    dst = os.path.join(new_folder_path,'_zero.csv')
+    copyfile(src, dst)
+    return new_folder_path
+
 def check_average_value(path_in):
     df = pd.read_csv(path_in,comment='#',header=None).to_numpy()
-    return (np.mean(df))
+    return (np.mean(df))       
 
 def temp_to_kinematic_viscosity(temp):
     rho = (999.83952 + 16.945176*temp - 7.9870401e-3*temp**2 - 46.170461e-6*temp**3 + 105.56302e-9*temp**4 - 280.54253e-12*temp**5)/(1 + 16.879850e-3*temp)
@@ -30,42 +111,7 @@ def temp_to_kinematic_viscosity(temp):
     
     # from (R. C. Weast, 1983, CRC Handbook of Chemistry and Physics, 64th edition, CRC Press, Boca Raton, FL
 
-    return mu/rho
-
-def minute_rounder(t):
-        # Rounds to nearest minute by adding a timedelta minute if sec >= 30
-        return (t.replace(second=0, microsecond=0, minute=t.minute, hour=t.hour)
-               +datetime.timedelta(minutes=t.second//30))
-
-def find_temperature(start_datetime,end_datetime):
-    # Note that there's a ~15 sec time difference between PC and thermostat times (2021-01-11 - YJ)
-    df = pd.read_csv('temperature/latest.csv',skiprows=14,usecols=range(1,4))
-
-    # print(type(start_datetime))
-    print(start_datetime, end_datetime)
-
-    start_datetime_object = minute_rounder(datetime.datetime.strptime(start_datetime,"%Y-%m-%d_%H:%M:%S"))
-    end_datetime_object = minute_rounder(datetime.datetime.strptime(end_datetime,'%Y-%m-%d_%H:%M:%S'))
-
-    # start_datetime_object = minute_rounder(datetime.datetime.strptime(start_datetime,'%Y-%m-%d_%H:%M:%S'))
-    # end_datetime_object = minute_rounder(datetime.datetime.strptime(end_datetime,'%Y-%m-%d_%H:%M:%S'))
-
-    start_date = start_datetime_object.strftime("%m/%d/%y")
-    end_date = end_datetime_object.strftime("%m/%d/%y")
-
-    start_time = start_datetime_object.strftime("%H:%M")
-    end_time = end_datetime_object.strftime("%H:%M")
-
-    try:
-        start_temperature = df.loc[(df['Date'] == start_date) & (df['Time'] == start_time)].iloc[0,0]
-        end_temperature = df.loc[(df['Date'] == end_date) & (df['Time'] == end_time)].iloc[0,0]
-    except: # which error?
-        print('No temperature data.')
-        sys.exit(1)
-
-    return start_temperature, end_temperature
-
-    # if time span exceed 1 min, this code should be modified to get temperature array, having size larger than 2. - YJ
+    return mu/rho    
 
 def analyze_new_folder(exp_path_in,load_temperature=False):
     zero_file_path = os.path.join(exp_path_in,'_zero.csv')
@@ -93,7 +139,7 @@ def analyze_new_folder(exp_path_in,load_temperature=False):
             end_time = end_time.strip('\n')        
 
             start_temperature, end_temperature = find_temperature(start_time,end_time)        
-            print(start_temperature,end_temperature)
+            # print(start_temperature,end_temperature)
             start_nu = temp_to_kinematic_viscosity(start_temperature)
             end_nu = temp_to_kinematic_viscosity(end_temperature)
         else:
@@ -103,13 +149,46 @@ def analyze_new_folder(exp_path_in,load_temperature=False):
         a,b,c,d = averaging(df,start_nu,end_nu)
 
         lhs,rhs = csv_file.split('.csv',1)
-        U = 0.0485*float(lhs) - 0.0088
+        # U = 0.0485*float(lhs) - 0.0088
+        U = 0.02835528*float(lhs) - 0.00649108
         data_array.append([U,a,b,c,d])
     data_array = np.array(data_array)
     data_array = data_array[np.argsort(data_array[:,0])]
 
     np.savetxt(os.path.join(exp_path_in, '_result.csv'),data_array,delimiter=',')
     return data_array
+
+def minute_rounder(t):
+        # Rounds to nearest minute by adding a timedelta minute if sec >= 30
+        return (t.replace(second=0, microsecond=0, minute=t.minute, hour=t.hour)
+               +datetime.timedelta(minutes=t.second//30))
+
+def find_temperature(start_datetime,end_datetime):
+    # Note that there's a ~15 sec time difference between PC and thermostat times (2021-01-11 - YJ)
+    # df = pd.read_csv('temperature/latest.csv',skiprows=14,usecols=range(1,4))
+    df = pd.read_csv('temperature/latest.csv',skiprows=20,usecols=[1,2,3],engine='python',names=['Temp','Time','Date'])
+
+    # print(type(start_datetime))
+    # print(start_datetime, end_datetime)
+
+    start_datetime_object = minute_rounder(datetime.datetime.strptime(start_datetime,"%Y-%m-%d_%H:%M:%S"))
+    end_datetime_object = minute_rounder(datetime.datetime.strptime(end_datetime,'%Y-%m-%d_%H:%M:%S'))    
+
+    start_date = start_datetime_object.strftime("%m/%d/%y")
+    end_date = end_datetime_object.strftime("%m/%d/%y")
+
+    start_time = start_datetime_object.strftime("%H:%M")
+    end_time = end_datetime_object.strftime("%H:%M")
+
+    try:
+        start_temperature = df.loc[(df['Date'] == start_date) & (df['Time'] == start_time)].iloc[0,0]
+        end_temperature = df.loc[(df['Date'] == end_date) & (df['Time'] == end_time)].iloc[0,0]
+    except:
+        print('No temperature data.')
+        sys.exit(1)
+
+    return start_temperature, end_temperature
+    # if time span exceed 1 min, this code should be modified to get temperature array, having size larger than 2. - YJ
 
 def analyze_a_folder(exp_path_in,update,load_temperature):
     if update == True:
@@ -127,8 +206,8 @@ def analyze_experiment_set(path_in,update=False,load_temperature=False):
         data_all[exp] = analyze_a_folder(os.path.join(path_in, exp),update=update,load_temperature=load_temperature)
     return data_all
 
-def averaging(data_in,start_nu,end_nu,N=10):    
-    data_reshaped = np.reshape(data_in,(N,int(data_in.size/N)))    
+def averaging(data_in,start_nu,end_nu,N=10):
+    data_reshaped = np.reshape(data_in,(N,int(data_in.size/N)))
     
     means = np.mean(data_reshaped,axis=1)            
     all_std = np.std(data_in)
@@ -142,8 +221,6 @@ def averaging(data_in,start_nu,end_nu,N=10):
     return mean_of_means, error_of_means, all_std, nu
 
 def do_calibration(path_in):
-    # temporary workaround for drag reading - Force unit conversion
-
     a = 0.013156
     return a
 
@@ -165,11 +242,11 @@ def inspect_new_exp(exp_path_in):
     for csv_file in csv_list:
         lhs,rhs = csv_file.split('.csv',1)
         dummy_array.append(float(lhs))
-    sorted_arg = np.uint32(np.argsort(np.array(dummy_array)))
+    sorted_arg = np.uint32(np.argsort(np.array(dummy_array)))    
     csv_list = [csv_list[i] for i in sorted_arg]
     # print(csv_list)
 
-    N = len(csv_list)
+    N = len(csv_list)    
     i = 0
     fig, ax = plt.subplots(N+1,1,figsize=(12,N*3))
     for csv_file in csv_list:        
@@ -203,13 +280,14 @@ def inspect_all_exp(folder_path_in,update = False):
         else:
             inspect_new_exp(os.path.join(folder_path_in,exp))
 
-def plot_data(data_all):
+def plot_data(data_all):    
     for k in data_all:
-        U_array = data_all[k][:,0]
-        drag_array = -data_all[k][:,1]
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
         error_array = (data_all[k][:,2] - data_all[k][0,1] + data_all[k][0,1])
         plt.errorbar(U_array,drag_array,error_array,fmt='o',label=k,capsize=5)
         plt.legend()
+        plt.xlabel('U (m/s)')
+        plt.ylabel('Drag (gf)')
 
 def plot_selected(data_all,keys):
     plot_data({k:data_all[k] for k in keys})    
@@ -231,27 +309,73 @@ def convert_data(key,data_array):
     except:
         param_string_without_numbering = key
 
-    sample_length = float(param_string_without_numbering.split('_')[-1])*0.1 # in cm units
+    sample_length = float(param_string_without_numbering.split('_')[-1])*0.01 # in cm units    
     
     U_array = data_array[:,0]
     Re_array = U_array * sample_length / data_array[:,4]
     drag_array = -data_array[:,1]/0.013156   
+    drag_array_compensated = drag_array*9.8/1000 - 0*0.5*999*U_array**2*0.005*0.048
+    CD_array = drag_array_compensated/(0.5*999*U_array**2*sample_length*0.048*2)
     e2_array = data_array[:,3]/0.013156
 
-    return U_array, Re_array, drag_array, e2_array
+    return U_array, Re_array, drag_array, CD_array, e2_array
+
+def plot_pressure_drag(data_all):
+    def quadratic_func(x,a):
+        return a*x**2
+
+    for k in data_all:
+        try:
+            param_string_without_numbering, dummy = k.split(' ',1)
+        except:
+            param_string_without_numbering = k
+
+        sample_length = float(param_string_without_numbering.split('_')[-1])*0.01 # in cm units    
+        
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
+        pressure_drag_array = drag_array - 1.328*np.sqrt(sample_length*0.048**2*abs(U_array)**3)/9.8*1000
+        plt.plot(U_array,pressure_drag_array,'o-',label=k)
+        plt.xlabel('U (m/s)')
+        plt.ylabel('Pressure drag (gf)')
+    
+    print(pressure_drag_array)
+    popt,pcov = curve_fit(quadratic_func,U_array,pressure_drag_array)    
+    plt.plot(U_array,quadratic_func(U_array,*popt))
+
+    Cp = popt[0]/0.5/999/0.005/0.048*9.8/1000
+    print(Cp)
 
 def plot_Re_Drag(data_all):
     for k in data_all:
-        U_array, Re_array, drag_array, e2_array = convert_data(k,data_all[k])
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
         plt.plot(Re_array,drag_array,'o',label=k)        
         plt.xlabel('Re')
         plt.ylabel('Drag (gf)')
         # plt.errorbar(U_array,drag_array,error_array,fmt='o',label=k,capsize=5)
         plt.legend()        
 
+def plot_Re_CD(data_all):
+    for k in data_all:
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
+        plt.plot(Re_array,CD_array,'o',label=k)        
+        plt.xlabel('Re')
+        plt.ylabel('C_D')
+        # plt.errorbar(U_array,drag_array,error_array,fmt='o',label=k,capsize=5)        
+
+    laminar_x = np.logspace(3.2,5.2,100)
+    laminar_y = 1.328/np.sqrt(laminar_x)
+    laminar_y2 = 1.328/np.sqrt(laminar_x) + 2.67*Re_array**(-7/8)
+    turb_x = np.logspace(3.2,5.2,100)
+    turb_y = 2*(0.41/np.log(turb_x)*1.5)**2
+
+    plt.plot(laminar_x,laminar_y,'k-',label='Laminar')   
+    plt.plot(turb_x,turb_y,'k--',label='Turbulent')
+    # plt.plot(laminar_x,laminar_y,'b-',label='Laminar')   
+    
+
 def plot_power(data_all):
     for k in data_all:
-        U_array, Re_array, drag_array, e2_array = convert_data(k,data_all[k])
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
         log_x = np.log(Re_array)
         log_y = np.log(drag_array)
 
@@ -263,7 +387,7 @@ def plot_power(data_all):
         # plt.errorbar(U_array,drag_array,error_array,fmt='o',label=k,capsize=5)
     
     # plt.plot([0.5e6,2.25e6],[2,2],'k-.',label='2')
-    plt.plot([0.5e6,2.25e6],[1.5,1.5],'k--',label='1.5')
+    plt.plot([0.2e4,0.8e5],[1.5,1.5],'k--',label='1.5')
     plt.legend()            
 
 def plot_nu(data_all):
@@ -285,7 +409,7 @@ def data_binning(grouped_data_dictionary,overlap=False):
 
     i = 0
     for k in grouped_data_dictionary:
-        U_array, Re_array, drag_array, e2_array = convert_data(k,grouped_data_dictionary[k])
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,grouped_data_dictionary[k])
         all_Re_array[i,:] = Re_array
         all_drag_array[i,:] = drag_array
         if overlap:
@@ -301,6 +425,7 @@ def data_binning(grouped_data_dictionary,overlap=False):
     plt.errorbar(averaged_Re_array,averaged_drag_array,
             xerr=error_Re_array,
             yerr=error_drag_array,fmt='o-',capsize=5,label = first_key)
+
     plt.legend()
     plt.xlabel('Re')
     plt.ylabel('Drag (gf)')
@@ -309,7 +434,7 @@ def data_binning(grouped_data_dictionary,overlap=False):
 
 def plot_with_std(data_all):
     for k in data_all:
-        U_array, Re_array, drag_array, e2_array = convert_data(k,data_all[k])
+        U_array, Re_array, drag_array, CD_array, e2_array = convert_data(k,data_all[k])
         plt.errorbar(Re_array,drag_array,e2_array,fmt='o',capsize=5,label=k)
         plt.xlabel('Re')
         plt.ylabel('Drag (gf)')
