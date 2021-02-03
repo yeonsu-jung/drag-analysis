@@ -13,6 +13,10 @@ from scipy.optimize import curve_fit
 from shutil import copyfile
 import datetime
 # %%
+# class DragAnalysis(folder_path):
+#     def __init__():
+
+# %%
 def calibrate_data(path_in):
     csv_list = [x for x in os.listdir(path_in) if x not in ['_result.txt']]
 
