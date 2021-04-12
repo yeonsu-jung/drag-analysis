@@ -10,7 +10,7 @@ reload(drag_analysis)
 folder_path = 'C:/Users/Water Tunnel/Documents/GitHub/tunnel_control/_data/drag-data/2021-04-12'
 
 t = time.time()
-data_all = drag_analysis.analyze_experiment_set(folder_path,update=True,load_temperature=True)
+data_all = drag_analysis.analyze_experiment_set(folder_path,update=True,load_temperature=False)
 
 elapsed = time.time() - t
 print('Elapsed time: %.2f sec'%elapsed)
@@ -24,6 +24,9 @@ plt.title('All data in the parent directory, error bar = std')
 
 # %%
 flat_keys = [x for x in data_all.keys() if x.startswith('Flat') and 'Copy'  in x]
+drag_analysis.plot_selected(data_all,flat_keys)
+# %%
+flat_keys = [x for x in data_all.keys() if x.startswith('2_1_1')]
 drag_analysis.plot_selected(data_all,flat_keys)
 
 # %%
