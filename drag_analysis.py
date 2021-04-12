@@ -150,7 +150,8 @@ def analyze_new_folder(exp_path_in,load_temperature=False):
 
         lhs,rhs = csv_file.split('.csv',1)
         # U = 0.0485*float(lhs) - 0.0088
-        U = 0.02835528*float(lhs) - 0.00649108
+        # U = 0.02835528*float(lhs) - 0.00649108
+        U = float(lhs)
         data_array.append([U,a,b,c,d])
     data_array = np.array(data_array)
     data_array = data_array[np.argsort(data_array[:,0])]
@@ -185,7 +186,8 @@ def find_temperature(start_datetime,end_datetime):
         end_temperature = df.loc[(df['Date'] == end_date) & (df['Time'] == end_time)].iloc[0,0]
     except:
         print('No temperature data.')
-        sys.exit(1)
+        start_temperature = 20.
+        end_temperature = 20.        
 
     return start_temperature, end_temperature
     # if time span exceed 1 min, this code should be modified to get temperature array, having size larger than 2. - YJ
@@ -286,7 +288,7 @@ def plot_data(data_all):
         error_array = (data_all[k][:,2] - data_all[k][0,1] + data_all[k][0,1])
         plt.errorbar(U_array,drag_array,error_array,fmt='o',label=k,capsize=5)
         plt.legend()
-        plt.xlabel('U (m/s)')
+        plt.xlabel('Motor speed (Hz)')
         plt.ylabel('Drag (gf)')
 
 def plot_selected(data_all,keys):
