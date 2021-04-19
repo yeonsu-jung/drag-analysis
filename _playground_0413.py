@@ -7,12 +7,12 @@ from matplotlib import pyplot as plt
 
 reload(drag_analysis)
 # %%
-folder_path = 'C:/Users/Water Tunnel/Documents/GitHub/tunnel_control/_data/drag-data/2021-04-12'
+folder_path = 'C:/Users/Water Tunnel/Documents/GitHub/tunnel_control/_data/drag-data/2021-04-13'
 
 t = time.time()
 data_all = drag_analysis.analyze_experiment_set(folder_path,update=True,load_temperature=False)
-
 elapsed = time.time() - t
+
 print('Elapsed time: %.2f sec'%elapsed)
 # %%
 drag_analysis.plot_data(data_all)
